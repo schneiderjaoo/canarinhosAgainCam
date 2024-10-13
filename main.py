@@ -1,34 +1,30 @@
+# main.py
 import cv2
 from camera import Camera
-from face_detection import FaceDetector
+from face_detection import FaceAndObjectDetector
 
 def main():
-    try:
-        camera = Camera()
-    except ValueError as e:
-        print(e)
-        return
+    camera = Camera()  # Inicializa a câmera
+    detector = FaceAndObjectDetector()
 
-    try:
-        detector = FaceDetector()
-    except IOError as e:
-        print(e)
-        camera.release()
-        return
+    prev_frame = camera.get_frame()  # Pega o primeiro frame
 
     while True:
         frame = camera.get_frame()
         if frame is None:
-            print("Não foi possível capturar o frame da câmera.")
             break
 
-        faces = detector.detect_faces(frame)
+        # Classifica a cena com base no frame atual e no anterior
+        classification = detector.classify_scene(frame, prev_frame)
+        print(classification)
 
-        for (x, y, w, h) in faces:
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Exibe o frame atual com as detecções
+        cv2.imshow('Frame', frame)
 
-        cv2.imshow('Detecção de Rostos', frame)
+        # Atualiza o frame anterior para o próximo ciclo
+        prev_frame = frame.copy()
 
+        # Pressione 'q' para sair do loop
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
