@@ -11,21 +11,24 @@ class FaceAndObjectDetector:
         if self.face_cascade.empty():
             raise IOError("Não foi possível carregar o classificador Haar Cascade.")
 
-    def detect_faces(self, frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)):
+    def detect_faces(self, frame, scaleFactor=1.1, minNeighbors=6, minSize=(30, 30)):
         # Converte para escala de cinza para detecção de faces
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray_frame, scaleFactor=scaleFactor, minNeighbors=minNeighbors, minSize=minSize)
         return faces
 
-    def detect_movement(self, prev_frame, current_frame):
+    def detect_movement(self, prev_frame, current_frame, min_contour_area=500):
         prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
         current_gray = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
 
+        # Calcula a diferença entre os quadros e aplica um limite
         diff_frame = cv2.absdiff(prev_gray, current_gray)
         _, thresh = cv2.threshold(diff_frame, 30, 255, cv2.THRESH_BINARY)
 
+        # Encontra contornos e filtra contornos pequenos para evitar ruídos
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        return contours
+        filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > min_contour_area]
+        return filtered_contours
 
     def classify_scene(self, frame, prev_frame):
         faces = self.detect_faces(frame)
@@ -39,6 +42,6 @@ class FaceAndObjectDetector:
         # Detecta movimento se não houver faces
         movement_contours = self.detect_movement(prev_frame, frame)
         if len(movement_contours) > 0:
-            return "Face not Detected"
+            return "Movement Detected"
         
         return "No significant object detected"
