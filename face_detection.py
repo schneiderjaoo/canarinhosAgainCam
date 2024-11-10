@@ -24,28 +24,31 @@ class PersonAndFaceDetector:
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         x, y, w, h = face_area
         body_area = frame[y + h: , x: x + w]
-
         bodies = self.body_cascade.detectMultiScale(body_area, scaleFactor=scaleFactor, minNeighbors=minNeighbors, minSize=minSize)
         bodies = [(x + bx, y + h + by, bw, bh) for (bx, by, bw, bh) in bodies]
         return bodies
 
-    def classify_scene(self, frame):
+    def classify_scene(self, frame, prev_positions):
         faces = self.detect_faces(frame)
         bodies = []
 
-        if len(faces) > 0:
-            for (x, y, w, h) in faces:
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2) 
+        for (x, y, w, h) in faces:
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+            body = self.detect_body(frame, (x, y, w, h))
+            bodies.extend(body)
 
-            for (x, y, w, h) in faces:
-                body = self.detect_body(frame, (x, y, w, h))
-                bodies.extend(body)
+        for (x, y, w, h) in bodies:
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-            return "Face Detected"
+        direction = None
+        all_detections = list(faces) + list(bodies)
+        for (x, y, w, h) in all_detections:
+            if prev_positions:
+                prev_x = prev_positions[0]
+                if x > prev_x:#Quando x aumenta (a pessoa se move para a direita), é considerado "Exiting", porque a pessoa está se afastando.
+                    direction = "Entrando"
+                elif x < prev_x:#Quando x diminui (a pessoa se move para a esquerda), é considerado "Entering", porque a pessoa está se aproximando.
+                    direction = "Saindo"
+            prev_positions = (x, y, w, h)
 
-        if len(bodies) > 0:
-            for (x, y, w, h) in bodies:
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)  # Verde para corpo
-            return "Body Detected"
-
-        return "No person detected"
+        return direction or "Sem movimento", prev_positions

@@ -5,6 +5,7 @@ from face_detection import PersonAndFaceDetector
 def main():
     camera = Camera()
     detector = PersonAndFaceDetector()
+    prev_positions = None
 
     while True:
         frame = camera.get_frame()
@@ -12,8 +13,8 @@ def main():
             print("Erro ao capturar frame. Encerrando...")
             break
 
-        classification = detector.classify_scene(frame)
-        print(classification)
+        direction, prev_positions = detector.classify_scene(frame, prev_positions)
+        print(direction)
 
         cv2.imshow('Frame', frame)
 
