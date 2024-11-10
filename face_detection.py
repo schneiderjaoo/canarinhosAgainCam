@@ -1,47 +1,51 @@
-# face_detection.py
 import cv2
 
-class FaceAndObjectDetector:
-    def __init__(self, cascade_path=None):
-        # Inicializa o classificador Haar Cascade para detecção de faces
-        if cascade_path is None:
+class PersonAndFaceDetector:
+    def __init__(self, face_cascade_path=None, body_cascade_path=None):
+        if face_cascade_path is None:
             self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         else:
-            self.face_cascade = cv2.CascadeClassifier(cascade_path)
-        if self.face_cascade.empty():
-            raise IOError("Não foi possível carregar o classificador Haar Cascade.")
+            self.face_cascade = cv2.CascadeClassifier(face_cascade_path)
 
-    def detect_faces(self, frame, scaleFactor=1.1, minNeighbors=6, minSize=(30, 30)):
-        # Converte para escala de cinza para detecção de faces
+        if body_cascade_path is None:
+            self.body_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fullbody.xml')
+        else:
+            self.body_cascade = cv2.CascadeClassifier(body_cascade_path)
+
+        if self.face_cascade.empty() or self.body_cascade.empty():
+            raise IOError("Não foi possível carregar os classificadores Haar Cascade para detecção de rosto ou corpo.")
+
+    def detect_faces(self, frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)):
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray_frame, scaleFactor=scaleFactor, minNeighbors=minNeighbors, minSize=minSize)
         return faces
 
-    def detect_movement(self, prev_frame, current_frame, min_contour_area=500):
-        prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
-        current_gray = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
+    def detect_body(self, frame, face_area, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30)):
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        x, y, w, h = face_area
+        body_area = frame[y + h: , x: x + w]
 
-        # Calcula a diferença entre os quadros e aplica um limite
-        diff_frame = cv2.absdiff(prev_gray, current_gray)
-        _, thresh = cv2.threshold(diff_frame, 30, 255, cv2.THRESH_BINARY)
+        bodies = self.body_cascade.detectMultiScale(body_area, scaleFactor=scaleFactor, minNeighbors=minNeighbors, minSize=minSize)
+        bodies = [(x + bx, y + h + by, bw, bh) for (bx, by, bw, bh) in bodies]
+        return bodies
 
-        # Encontra contornos e filtra contornos pequenos para evitar ruídos
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > min_contour_area]
-        return filtered_contours
-
-    def classify_scene(self, frame, prev_frame):
+    def classify_scene(self, frame):
         faces = self.detect_faces(frame)
+        bodies = []
 
-        # Se detectou faces, desenha retângulos ao redor das faces
         if len(faces) > 0:
             for (x, y, w, h) in faces:
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2) 
+
+            for (x, y, w, h) in faces:
+                body = self.detect_body(frame, (x, y, w, h))
+                bodies.extend(body)
+
             return "Face Detected"
 
-        # Detecta movimento se não houver faces
-        movement_contours = self.detect_movement(prev_frame, frame)
-        if len(movement_contours) > 0:
-            return "Movement Detected"
-        
-        return "No significant object detected"
+        if len(bodies) > 0:
+            for (x, y, w, h) in bodies:
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)  # Verde para corpo
+            return "Body Detected"
+
+        return "No person detected"

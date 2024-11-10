@@ -1,30 +1,22 @@
-# main.py
 import cv2
 from camera import Camera
-from face_detection import FaceAndObjectDetector
+from face_detection import PersonAndFaceDetector
 
 def main():
-    camera = Camera()  # Inicializa a câmera
-    detector = FaceAndObjectDetector()
-
-    prev_frame = camera.get_frame()  # Pega o primeiro frame
+    camera = Camera()
+    detector = PersonAndFaceDetector()
 
     while True:
         frame = camera.get_frame()
         if frame is None:
+            print("Erro ao capturar frame. Encerrando...")
             break
 
-        # Classifica a cena com base no frame atual e no anterior
-        classification = detector.classify_scene(frame, prev_frame)
+        classification = detector.classify_scene(frame)
         print(classification)
 
-        # Exibe o frame atual com as detecções
         cv2.imshow('Frame', frame)
 
-        # Atualiza o frame anterior para o próximo ciclo
-        prev_frame = frame.copy()
-
-        # Pressione 'q' para sair do loop
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
