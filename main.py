@@ -6,6 +6,8 @@ def main():
     camera = Camera()
     detector = PersonAndFaceDetector()
 
+    # cv2.namedWindow('Frame', cv2.WINDOW_NORMAL)
+
     while True:
         frame = camera.get_frame()
         if frame is None:
