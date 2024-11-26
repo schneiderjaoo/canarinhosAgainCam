@@ -5,8 +5,10 @@ import time
 from datetime import datetime
 
 class PersonAndFaceDetector:
-    def __init__(self, api_url="https://localhost:5001/api/passagem-apontamento"):
+    def __init__(self, api_url="https://localhost:5001/api/passagem-apontamento", bus_line=""):
         self.api_url = api_url
+        self.bus_line = bus_line
+
         self.face_net = cv2.dnn.readNetFromCaffe(
             'models/deploy.prototxt',  # Caminho para o arquivo deploy.prototxt
             'models/res10_300x300_ssd_iter_140000.caffemodel'  # Caminho para o modelo Caffe
@@ -37,7 +39,7 @@ class PersonAndFaceDetector:
             "CodApontamento": 0,
             "Quantidade": 1,
             "DataHora": datetime.now().isoformat(),
-            "LinhaOnibus": "Pomerode"
+            "LinhaOnibus": self.bus_line
         }
 
         try:
