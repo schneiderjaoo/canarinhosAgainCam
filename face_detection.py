@@ -1,40 +1,47 @@
 import cv2
+import numpy as np 
 import requests
-import json
+import time
 from datetime import datetime
 
 class PersonAndFaceDetector:
-    def __init__(self, face_cascade_path=None, body_cascade_path=None, profile_cascade_path=None, api_url="http://localhost:5001/api/passagem-apontamento"):
-        # Configurações iniciais
-        self.api_url = api_url  # URL da sua API
-        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml') if face_cascade_path is None else cv2.CascadeClassifier(face_cascade_path)
-        self.body_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fullbody.xml') if body_cascade_path is None else cv2.CascadeClassifier(body_cascade_path)
-        self.profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_profileface.xml') if profile_cascade_path is None else cv2.CascadeClassifier(profile_cascade_path)
-        
-        if self.face_cascade.empty() or self.body_cascade.empty() or self.profile_cascade.empty():
-            raise IOError("Não foi possível carregar os classificadores Haar Cascade para detecção de rosto ou corpo.")
+    def __init__(self, api_url="https://localhost:5001/api/passagem-apontamento"):
+        self.api_url = api_url
+        self.face_net = cv2.dnn.readNetFromCaffe(
+            'models/deploy.prototxt',  # Caminho para o arquivo deploy.prototxt
+            'models/res10_300x300_ssd_iter_140000.caffemodel'  # Caminho para o modelo Caffe
+        )
         
         self.tracker = None
-        self.face_box = None
+        self.last_event_time = 0
+        self.event_cooldown = 3  # Intervalo mínimo entre chamadas da API
+        self.entry_detected = False
+        self.exit_detected = False
 
-    def detect_faces(self, frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)):
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(gray_frame, scaleFactor=scaleFactor, minNeighbors=minNeighbors, minSize=minSize)
-        if len(faces) == 0:
-            faces = self.profile_cascade.detectMultiScale(gray_frame, scaleFactor=scaleFactor, minNeighbors=minNeighbors, minSize=minSize)
-        return faces
+    def detect_faces_dnn(self, frame):
+        h, w = frame.shape[:2]
+        blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0))
+        self.face_net.setInput(blob)
+        detections = self.face_net.forward()
 
-    def register_entry(self, user_id):
+        for i in range(detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence > 0.7:  # Confiança mínima
+                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                (startX, startY, endX, endY) = box.astype("int")
+                return (startX, startY, endX - startX, endY - startY)  # Coordenadas do rosto
+        return None
+
+    def register_entry(self):
         data = {
-            "CodApontamento": 0,  # Aqui você pode definir um valor único ou gerar dinamicamente
-            "Quantidade": 1,  # Quantidade de pessoas que entraram (sempre 1, conforme mencionado)
-            "DataHora": datetime.now().isoformat(),  # Data e hora atual
-            "LinhaOnibus": "Pomerode"  # Linha de ônibus
+            "CodApontamento": 0,
+            "Quantidade": 1,
+            "DataHora": datetime.now().isoformat(),
+            "LinhaOnibus": "Pomerode"
         }
 
-        # Envia um POST para a API para registrar a entrada
         try:
-            response = requests.post('https://localhost:5001/api/passagem-apontamento', json=data, verify=False)
+            response = requests.post(self.api_url, json=data, verify=False)
             if response.status_code == 200:
                 print("Entrada registrada com sucesso!")
             else:
@@ -51,36 +58,34 @@ class PersonAndFaceDetector:
         cv2.line(frame, (exit_line_x, 0), (exit_line_x, height), (0, 0, 255), 2)
 
         if self.tracker is None:
-            faces = self.detect_faces(frame)
-            if len(faces) > 0:
-                self.face_box = faces[0]
+            face_box = self.detect_faces_dnn(frame)
+            if face_box:
                 self.tracker = cv2.TrackerCSRT_create()
-                self.tracker.init(frame, tuple(self.face_box))
-
-        if self.tracker is not None:
+                self.tracker.init(frame, tuple(face_box))
+        else:
             success, box = self.tracker.update(frame)
             if success:
                 x, y, w, h = [int(v) for v in box]
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-                movement_status = "Rosto em movimento"
-                if x < exit_line_x:
-                    movement_status = "Entrada detectada"
-                    cv2.putText(frame, "Entrada", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                    # Quando detecta a entrada, registra na API
-                    self.register_entry(user_id=123)  # Substitua 123 por um identificador real do usuário
+                current_time = time.time()
+                if x < exit_line_x and not self.entry_detected:
+                    if current_time - self.last_event_time > self.event_cooldown:
+                        self.register_entry()
+                        self.last_event_time = current_time
+                        self.entry_detected = True
+                        self.exit_detected = False
 
-                elif x > entry_line_x:
-                    movement_status = "Saída detectada"
-                    cv2.putText(frame, "Saída", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
+                elif x > entry_line_x and not self.exit_detected:
+                    if current_time - self.last_event_time > self.event_cooldown:
+                        print("Saída detectada!")
+                        self.last_event_time = current_time
+                        self.exit_detected = True
+                        self.entry_detected = False
             else:
-                movement_status = "Rosto perdido"
-
-            if not success:
+                # Reinicia o rastreador se não estiver mais detectando o rosto
                 self.tracker = None
+                self.entry_detected = False
+                self.exit_detected = False
 
-        else:
-            movement_status = "Sem rosto detectado"
-        
-        return movement_status
+        return frame
